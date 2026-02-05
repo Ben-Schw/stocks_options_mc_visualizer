@@ -2,6 +2,7 @@ from .stock import Stock
 from .option import Option
 import numpy as np
 import pandas as pd
+import matplotlib
 import matplotlib.pyplot as plt
 from .helper import price_paths_macros
 from matplotlib.widgets import RadioButtons
@@ -10,7 +11,7 @@ from matplotlib.widgets import RadioButtons
 class MonteCarlo:
     """
     Initializes a Monte Carlo simulator for geometric Brownian motion price paths.
-
+    
     Parameters:
     S0 - Initial price
     r - Drift (annualized)
@@ -115,7 +116,7 @@ class MonteCarloStock(MonteCarlo):
 
             horizon_days = days - 1
 
-            S0 = stock_rep.prices.iloc[-1]
+            S0 = stock.prices.loc[start]
             r, sigma = stock_rep.yearly_mu_sigma()
         else:
             S0 = stock.prices.iloc[-1]
@@ -151,6 +152,8 @@ class MonteCarloStock(MonteCarlo):
         idx = np.random.choice(n_sims, size=num_paths, replace=False)
 
         fig, ax = plt.subplots(figsize=(12, 6))
+        fig.patch.set_facecolor("#8ebff3")
+        ax.set_facecolor("#0c89f7")
 
         show_date = self.stock.end_date
 
@@ -170,44 +173,62 @@ class MonteCarloStock(MonteCarlo):
             if len(prices) != steps:
                 raise ValueError(f"Lengths are not compatible: true={len(prices)} vs paths={steps}")
 
-            true_line, = ax.plot(x_sim, prices, linewidth=2, label="True price")
+            true_line, = ax.plot(x_sim, prices, linewidth=2, label="True price", color="red")
             show_date = self.mid_date
 
         for j in idx:
-            ax.plot(x_sim, paths[:, j], alpha=0.25, color="grey")
+            ax.plot(x_sim, paths[:, j], lw=0.1, color="black")
 
         metric_keys = [
-            "mean_path",
-            "median_path",
-            "25th_percentile",
-            "75th_percentile",
-            "5th_percentile",
-            "95th_percentile"
+            "Mean",
+            "Median",
+            "25% Quantile",
+            "75% Quantile",
+            "5% Quantile",
+            "95% Quantile"
         ]
 
-        current_key = "mean_path"
-        metric_line, = ax.plot(x_sim, summary[current_key], linewidth=2.5, label=current_key)
+        metric_map = {
+            "Mean": "mean_path",
+            "Median": "median_path",
+            "25% Quantile": "25th_percentile",
+            "75% Quantile": "75th_percentile",
+            "5% Quantile": "5th_percentile",
+            "95% Quantile": "95th_percentile"
+        }
+
+        current_key = "Mean"
+        metric_line, = ax.plot(x_sim, summary[metric_map[current_key]], linewidth=2.5, label=current_key, color="green")
 
         ax.set_title(f"Monte-Carlo-Simulations (from {show_date})")
         ax.set_xlabel("days")
         ax.set_ylabel("price")
-        ax.legend(loc="upper right")
+        ax.grid(alpha=0.4, color="white")
+        ax.margins(x=0)
+        ax.legend(loc="upper left")
 
-        rax = plt.axes([0.0, 0.75, 0.2, 0.25])
+        rax = ax.inset_axes([0.78, 0.65, 0.20, 0.30])
+        rax.set_facecolor("#a4d1f8")
         radio = RadioButtons(rax, metric_keys, active=metric_keys.index(current_key))
 
         def on_click(label):
-            metric_line.set_ydata(summary[label])
+            metric_line.set_ydata(summary[metric_map[label]])
             metric_line.set_label(label)
-            ax.legend(loc="best")
+            ax.legend(loc="upper left")
             ax.relim()
             ax.autoscale_view()
             fig.canvas.draw_idle()
 
         radio.on_clicked(on_click)
 
-        plt.tight_layout()
-        plt.show()
+        fig.subplots_adjust(
+            left=0.08,
+            right=0.97,
+            top=0.92,
+            bottom=0.12
+        )
+        plt.show(block=True)
+        plt.close(fig)
 
 
 class MonteCarloOption(MonteCarlo):
@@ -261,41 +282,62 @@ class MonteCarloOption(MonteCarlo):
 
         time_grid = np.linspace(0.0, T, self.steps + 1)
         idx = np.random.choice(self.simulations, size=num_paths, replace=False)
-        fig, ax = plt.subplots(figsize=(12, 6))
+        fig, ax = plt.subplots(figsize=(9, 6))
+        fig.patch.set_facecolor("#8ebff3")
+        ax.set_facecolor("#0c89f7")
+
         for j in idx:
-            ax.plot(time_grid, paths[:, j], lw=0.8, alpha=0.6, color="grey")
+            ax.plot(time_grid, paths[:, j], lw=0.1, color="black")
 
         metric_keys = [
-            "mean_path",
-            "median_path",
-            "25th_percentile",
-            "75th_percentile",
-            "5th_percentile",
-            "95th_percentile"
+            "Mean",
+            "Median",
+            "25% Quantile",
+            "75% Quantile",
+            "5% Quantile",
+            "95% Quantile"
         ]
 
-        current_key = "mean_path"
-        metric_line, = ax.plot(time_grid, summary[current_key], linewidth=2.5, label=current_key)
+        metric_map = {
+            "Mean": "mean_path",
+            "Median": "median_path",
+            "25% Quantile": "25th_percentile",
+            "75% Quantile": "75th_percentile",
+            "5% Quantile": "5th_percentile",
+            "95% Quantile": "95th_percentile"
+        }
+
+        current_key = "Mean"
+        metric_line, = ax.plot(time_grid, summary[metric_map[current_key]], linewidth=2.5, label=current_key, color="green")
 
         ax.set_title("Monte-Carlo-Simulations (GBM)")
         ax.set_xlabel("days")
         ax.set_ylabel("price")
-        ax.legend(loc="upper right")
+        ax.grid(alpha=0.4, color="white")
+        ax.margins(x=0)
+        ax.legend(loc="upper left")
 
-        rax = plt.axes([0.75, 0.75, 0.2, 0.25])
+        rax = ax.inset_axes([0.72, 0.67, 0.26, 0.30])
+        rax.set_facecolor("#a4d1f8")
         radio = RadioButtons(rax, metric_keys, active=metric_keys.index(current_key))
 
         def on_click(label):
-            metric_line.set_ydata(summary[label])
+            metric_line.set_ydata(summary[metric_map[label]])
             metric_line.set_label(label)
-            ax.legend(loc="upper right")
+            ax.legend(loc="upper left")
             ax.relim()
             ax.autoscale_view()
             fig.canvas.draw_idle()
 
         radio.on_clicked(on_click)
-        plt.tight_layout()
-        plt.show()
+        fig.subplots_adjust(
+            left=0.08,
+            right=0.97,
+            top=0.92,
+            bottom=0.12
+        )
+        plt.show(block=True)
+        plt.close(fig)
 
     """
     Estimates the option price via Monte Carlo using the discounted payoff.
@@ -390,20 +432,30 @@ class MonteCarloOption(MonteCarlo):
         idx = np.arange(1, n_paths + 1)
         cum_mean = np.cumsum(values) / idx
 
-        plt.figure(figsize=(11, 5))
-        plt.plot(idx, values, linewidth=0.8, alpha=0.35,
-                 label="Payoff per path" if not discount else "Discounted payoff per path")
-        plt.plot(idx, cum_mean, linewidth=2.5, label="Cumulative mean")
+        fig, ax = plt.subplots(figsize=(11, 5))
+        fig.patch.set_facecolor("#8ebff3")
+        ax.set_facecolor("#0c89f7")
 
-        plt.axhline(self.option.premium, linestyle="--", linewidth=1.5, label="Black-Scholes price")
+        ax.plot(idx, values, linewidth=0.5, alpha=0.6,
+                label="Payoff per path" if not discount else "Discounted payoff per path", color="black")
+        ax.plot(idx, cum_mean, linewidth=2.5, label="Cumulative mean", color="yellow")
 
-        plt.title("Payoffs and cumulative mean (Monte Carlo)")
-        plt.xlabel("Path index")
-        plt.ylabel("Value")
-        plt.grid(alpha=0.3)
-        plt.legend()
-        plt.tight_layout()
-        plt.show()
+        ax.axhline(self.option.premium, linestyle="--", linewidth=1.5, label="Black-Scholes price", color="red")
+
+        ax.set_title("Payoffs and cumulative mean (Monte Carlo)")
+        ax.set_xlabel("Number of simulation")
+        ax.set_ylabel("Payoff")
+        ax.grid(alpha=0.4, color="white")
+        ax.margins(x=0)
+        ax.legend()
+        fig.subplots_adjust(
+            left=0.08,
+            right=0.97,
+            top=0.92,
+            bottom=0.12
+        )
+        plt.show(block=True)
+        plt.close(fig)
 
         return {
             "ST": ST,

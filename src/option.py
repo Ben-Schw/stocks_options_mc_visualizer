@@ -1,5 +1,6 @@
 import numpy as np
 import scipy.stats
+import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 
@@ -231,11 +232,19 @@ class Option:
         T_grid, K_grid = np.meshgrid(T_range, K_range)
 
         fig, ax = plt.subplots(figsize=(10, 6))
-        plt.subplots_adjust(bottom=0.3)
+        fig.patch.set_facecolor("#8ebff3")
+        ax.set_facecolor("#0c89f7")
+        plt.subplots_adjust(bottom=0.30)
 
         price_grid = self._price_grid(self.S, K_grid, T_grid, self.r, self.sigma)
 
-        im = ax.imshow(price_grid, origin="lower", interpolation="nearest", aspect="auto")
+        im = ax.imshow(
+            price_grid,
+            origin="lower",
+            interpolation="nearest",
+            aspect="auto",
+            cmap="coolwarm"
+        )
         ax.set_xticks(np.arange(len(T_range)))
         ax.set_yticks(np.arange(len(K_range)))
         ax.set_xticklabels([f"{t:.2f}" for t in T_range])
@@ -245,22 +254,33 @@ class Option:
         title = ax.set_title(
             f"Black-Scholes {self.option_type.upper()} Prices\nS={self.S:.2f}, r={self.r:.3f}, σ={self.sigma:.2f}"
         )
-        fig.colorbar(im, ax=ax, label="Option Price")
+
+        cb = fig.colorbar(im, ax=ax, label="Option Price")
+        cb.ax.set_facecolor("#8ebff3")
+
+        ax.grid(False)
 
         texts = []
         for i in range(price_grid.shape[0]):
             row = []
             for j in range(price_grid.shape[1]):
-                row.append(ax.text(j, i, f"{price_grid[i, j]:.2f}", ha="center", va="center", fontsize=9))
+                row.append(ax.text(j, i, f"{price_grid[i, j]:.2f}", ha="center", va="center", fontsize=9, color="white"))
             texts.append(row)
 
         ax_S = plt.axes([0.15, 0.20, 0.7, 0.03])
         ax_r = plt.axes([0.15, 0.15, 0.7, 0.03])
         ax_sigma = plt.axes([0.15, 0.10, 0.7, 0.03])
 
+        ax_S.set_facecolor("#a4d1f8")
+        ax_r.set_facecolor("#a4d1f8")
+        ax_sigma.set_facecolor("#a4d1f8")
+
         slider_S = Slider(ax_S, "S", 0.7 * self.S, 1.3 * self.S, valinit=self.S, valstep=max(self.S * 0.01, 0.01))
         slider_r = Slider(ax_r, "r", -0.01, 0.10, valinit=self.r, valstep=0.001)
         slider_sigma = Slider(ax_sigma, "σ", 0.01, 1.0, valinit=self.sigma, valstep=0.01)
+
+        title_box = dict(boxstyle="round", facecolor="#0c89f7", alpha=0.85)
+        title.set_bbox(title_box)
 
         def update(_):
             S = float(slider_S.val)
@@ -269,6 +289,7 @@ class Option:
 
             new_prices = self._price_grid(S, K_grid, T_grid, r, sigma)
             im.set_data(new_prices)
+            im.set_clim(np.nanmin(new_prices), np.nanmax(new_prices))
 
             title.set_text(
                 f"Black-Scholes {self.option_type.upper()} Prices\nS={S:.2f}, r={r:.3f}, σ={sigma:.2f}"
@@ -284,7 +305,8 @@ class Option:
         slider_r.on_changed(update)
         slider_sigma.on_changed(update)
 
-        plt.show()
+        plt.show(block=True)
+        plt.close(fig)
 
     """
     Computes a vectorized grid of Black-Scholes prices for heatmap plotting.
@@ -321,15 +343,28 @@ class Option:
         ST = np.asarray(ST_range, dtype=float)
         pnl_values = self.pnl(ST) - self.premium
 
-        plt.figure(figsize=(10, 6))
-        plt.plot(ST, pnl_values, label="PnL", color="blue")
-        plt.axhline(0, color="black", linestyle="--")
-        plt.title(f"PnL at Expiry for {self.option_type.upper()} Option")
-        plt.xlabel("Stock Price at Expiry (ST)")
-        plt.ylabel("PnL")
-        plt.grid()
-        plt.legend()
-        plt.show()
+        fig, ax = plt.subplots(figsize=(10, 6))
+        fig.patch.set_facecolor("#8ebff3")
+        ax.set_facecolor("#0c89f7")
+
+        ax.plot(ST, pnl_values, label="PnL", color="blue")
+        ax.axhline(0, color="white", linestyle="--", alpha=0.8)
+
+        ax.set_title(f"PnL at Expiry for {self.option_type.upper()} Option")
+        ax.set_xlabel("Stock Price at Expiry (ST)")
+        ax.set_ylabel("PnL")
+        ax.grid(alpha=0.4, color="white")
+        ax.margins(x=0)
+        ax.legend()
+
+        fig.subplots_adjust(
+            left=0.08,
+            right=0.97,
+            top=0.92,
+            bottom=0.12
+        )
+        plt.show(block=True)
+        plt.close(fig)
 
     """
     Returns a string representation of the Option object.

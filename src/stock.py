@@ -1,8 +1,10 @@
 import numpy as np
 import pandas as pd
 import yfinance as yf
+import matplotlib
 import matplotlib.pyplot as plt
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
+from matplotlib.widgets import CheckButtons
 
 class Stock:
     """
@@ -248,127 +250,133 @@ class Stock:
     Plots price data and optionally compares it to a benchmark.
 
     Parameters:
-    benchmark_ticker (str | None) - Benchmark symbol
-    percentage (bool) - Plot percentage change
-    cummulative (bool) - Show cumulative max
+    benchmark_ticker (str) - Benchmark symbol
 
     Return:
     None
     """
-    def plot_prices(self, benchmark_ticker: str | None = None, percentage: bool = False, cummulative: bool = False):
+    def plot_prices(self, benchmark_ticker: str = "SPY"):
         self._ensure_loaded()
 
-        plt.figure(figsize=(10, 5))
+        benchmark_prices = None
+        if benchmark_ticker:
+            benchmark_prices = self.fetch_prices(
+                benchmark_ticker,
+                self.start_date,
+                self.end_date,
+                self.price_field
+            )
 
-        if percentage:
-            asset_pct = (self.prices / self.prices.iloc[0] - 1) * 100
-            plt.plot(asset_pct.index, asset_pct.values, label=self.ticker, color="blue")
+        fig, ax = plt.subplots(figsize=(9, 6))
+        fig.patch.set_facecolor("#8ebff3")
+        ax.set_facecolor("#0c89f7")
 
-            title = f"{self.ticker} Price Change (%) ({self.start_date} to {self.end_date})"
+        state = {
+            "percentage": False,
+            "benchmark": False,
+            "cumulative": False
+        }
 
-            if benchmark_ticker:
-                benchmark_prices = self.fetch_prices(
-                    benchmark_ticker,
-                    self.start_date,
-                    self.end_date,
-                    self.price_field
-                )
-                bench_pct = (benchmark_prices / benchmark_prices.iloc[0] - 1) * 100
+        plt.tight_layout(rect=[0, 0, 0.78, 1])
 
-                plt.plot(
-                    bench_pct.index,
-                    bench_pct.values,
-                    label=benchmark_ticker,
-                    color="orange"
-                )
+        info_text = ax.text(
+            0.98, 0.98,
+            "",
+            transform=ax.transAxes,
+            fontsize=10,
+            va="top",
+            ha="right",
+            bbox=dict(boxstyle="round", facecolor="#a8d6ff", alpha=0.85),
+            visible=False
+        )
 
-                if cummulative:
-                    rolling_max = self.prices.cummax()
-                    plt.plot(asset_pct.index, ((rolling_max / rolling_max.iloc[0] - 1) * 100).values, label=f"{self.ticker} Cummulative Max", color="blue", linestyle="--")
+        rax = ax.inset_axes([0.77, 0.03, 0.2, 0.22])
+        rax.set_facecolor("#a1d0f8")
+        labels = ["Percentage", "Benchmark", "Cumulative"]
+        check = CheckButtons(rax, labels, [False, False, False])
 
+        def recompute_plot():
+            for line in list(ax.lines):
+                line.remove()
+            leg = ax.get_legend()
+            if leg is not None:
+                leg.remove()
+
+            info_text.set_visible(False)
+            info_text.set_text("")
+
+            ax.set_facecolor("#0c89f7")
+            ax.grid(alpha=0.4, color="white")
+            ax.margins(x=0)
+
+            if state["percentage"]:
+                asset = (self.prices / self.prices.iloc[0] - 1) * 100
+                ylabel = "Return (%)"
+            else:
+                asset = self.prices
+                ylabel = "Price"
+
+            ax.plot(asset.index, asset.values, color="blue", label=self.ticker)
+
+            show_stats = False
+            if state["benchmark"] and benchmark_prices is not None:
+                if state["percentage"]:
+                    bench = (benchmark_prices / benchmark_prices.iloc[0] - 1) * 100
+                else:
+                    bench = benchmark_prices
+                ax.plot(bench.index, bench.values, color="orange", label=benchmark_ticker)
+                show_stats = True
+
+            if state["cumulative"]:
+                rolling_max = self.prices.cummax()
+                if state["percentage"]:
+                    rolling_max = (rolling_max / rolling_max.iloc[0] - 1) * 100
+                ax.plot(rolling_max.index, rolling_max.values, "--", color="blue", label="Cumulative Max")
+
+            ax.set_title(f"{self.ticker} Prices ({self.start_date} to {self.end_date})")
+            ax.set_xlabel("Date")
+            ax.set_ylabel(ylabel)
+            ax.legend()
+
+            if show_stats:
                 stats = self.alpha_beta(benchmark_ticker, self.start_date, self.end_date)
-
                 alpha_ann = stats["alpha_annual"]
                 beta = stats["beta"]
                 r2 = stats["r2"]
 
-                title = f"{self.ticker} vs {benchmark_ticker} Prices ({self.start_date} to {self.end_date})"
-
-                textstr = (
+                info_text.set_text(
+                    f"{self.ticker} vs {benchmark_ticker}\n"
                     f"Alpha (ann): {alpha_ann:.2%}\n"
                     f"Beta: {beta:.3f}\n"
-                    f"R²: {r2:.3f}\n"
+                    f"R²: {r2:.3f}"
                 )
+                info_text.set_visible(True)
 
-                plt.gca().text(
-                    0.02, 0.98,
-                    textstr,
-                    transform=plt.gca().transAxes,
-                    fontsize=10,
-                    verticalalignment="top",
-                    bbox=dict(boxstyle="round", facecolor="white", alpha=0.8)
-                )
-            plt.title(title)
-            plt.xlabel("Date")
-            plt.ylabel("Price")
-            plt.grid(alpha=0.3)
-            plt.legend()
-            plt.tight_layout()
-            plt.show()
-        else:
-            plt.plot(self.prices.index, self.prices.values, label=self.ticker, color="blue")
+            ax.relim()
+            ax.autoscale_view()
+            fig.canvas.draw_idle()
 
-            title = f"{self.ticker} Prices ({self.start_date} to {self.end_date})"
+        def toggle(label):
+            if label == "Percentage":
+                state["percentage"] = not state["percentage"]
+            elif label == "Benchmark":
+                state["benchmark"] = not state["benchmark"]
+            elif label == "Cumulative":
+                state["cumulative"] = not state["cumulative"]
 
-            if benchmark_ticker:
-                benchmark_prices = self.fetch_prices(
-                    benchmark_ticker,
-                    self.start_date,
-                    self.end_date,
-                    self.price_field
-                )
+            recompute_plot()
 
-                plt.plot(
-                    benchmark_prices.index,
-                    benchmark_prices.values,
-                    label=benchmark_ticker,
-                    color="orange"
-                )
+        check.on_clicked(toggle)
 
-                if cummulative:
-                    rolling_max = self.prices.cummax()
-                    plt.plot(self.prices.index, rolling_max.values, label=f"{self.ticker} Cummulative Max", color="blue", linestyle="--")
-
-                stats = self.alpha_beta(benchmark_ticker, self.start_date, self.end_date)
-
-                alpha_ann = stats["alpha_annual"]
-                beta = stats["beta"]
-                r2 = stats["r2"]
-
-                title = f"{self.ticker} vs {benchmark_ticker} Prices ({self.start_date} to {self.end_date})"
-
-                textstr = (
-                    f"Alpha (ann): {alpha_ann:.2%}\n"
-                    f"Beta: {beta:.3f}\n"
-                    f"R²: {r2:.3f}\n"
-                )
-
-                plt.gca().text(
-                    0.02, 0.98,
-                    textstr,
-                    transform=plt.gca().transAxes,
-                    fontsize=10,
-                    verticalalignment="top",
-                    bbox=dict(boxstyle="round", facecolor="white", alpha=0.8)
-                )
-
-            plt.title(title)
-            plt.xlabel("Date")
-            plt.ylabel("Price")
-            plt.grid(alpha=0.3)
-            plt.legend()
-            plt.tight_layout()
-            plt.show()
+        recompute_plot()
+        fig.subplots_adjust(
+            left=0.08,
+            right=0.97,
+            top=0.92,
+            bottom=0.12
+        )
+        plt.show(block=True)
+        plt.close(fig)
 
     """
     Plots the drawdown curve of the stock over time.
@@ -384,15 +392,158 @@ class Stock:
 
         rolling_max = self.prices.cummax()
         drawdown = (self.prices - rolling_max) / rolling_max
-        plt.figure(figsize=(10, 4))
-        plt.plot(drawdown.index, drawdown.values, color="red")
-        plt.fill_between(drawdown.index, drawdown.values, 0, color="red", alpha=0.3)
-        plt.title(f"{self.ticker} Drawdown ({self.start_date} to {self.end_date})")
-        plt.xlabel("Date")
-        plt.ylabel("Drawdown")
-        plt.grid(alpha=0.3)
+        fig, ax = plt.subplots(figsize=(8, 4))
+        fig.patch.set_facecolor("#8ebff3")
+        ax.set_facecolor("#0c89f7")
+        ax.plot(drawdown.index, drawdown.values, color="red")
+        ax.fill_between(drawdown.index, drawdown.values, 0, color="red", alpha=0.3)
+        ax.set_title(f"{self.ticker} Drawdown ({self.start_date} to {self.end_date})")
+        ax.set_xlim(drawdown.index.min(), drawdown.index.max())
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Drawdown (%)")
+        ax.grid(alpha=0.4, color="white", linewidth=1)
+        plt.setp(ax.get_xticklabels(), rotation=30, ha="right")
         plt.tight_layout()
-        plt.show()
+        plt.show(block=True)
+        plt.close(fig)
+
+    """
+    Plots the daily returns of the stock (also with a benchmark):
+
+    Parameters:
+    benchmark_ticker (str) - Benchmark symbol
+
+    Return:
+    None
+    """
+    def plot_daily_returns(self, benchmark_ticker: str = "SPY"):
+        self._ensure_loaded()
+
+        benchmark_prices = None
+        if benchmark_ticker:
+            benchmark_prices = self.fetch_prices(
+                benchmark_ticker,
+                self.start_date,
+                self.end_date,
+                self.price_field
+            )
+
+        fig, ax = plt.subplots(figsize=(9, 6))
+        fig.patch.set_facecolor("#8ebff3")
+        ax.set_facecolor("#0c89f7")
+
+        state = {
+            "benchmark": False,
+            "cumulative": False,
+            "hist": False
+        }
+
+        info_text = ax.text(
+            0.98, 0.98,
+            "",
+            transform=ax.transAxes,
+            fontsize=10,
+            va="top",
+            ha="right",
+            bbox=dict(boxstyle="round", facecolor="#8fc8fa", alpha=0.85),
+            visible=False
+        )
+
+        def _daily_returns(series):
+            return series.pct_change().dropna() * 100
+
+        def _cumulative_from_returns(daily_ret_pct):
+            growth = (1 + daily_ret_pct / 100.0).cumprod()
+            return (growth - 1) * 100
+
+        rax = ax.inset_axes([0.77, 0.03, 0.2, 0.22])
+        rax.set_facecolor("#a4d1f8")
+        labels = ["Benchmark", "Cumulative"]
+        check = CheckButtons(rax, labels, [False, False])
+
+        def recompute_plot():
+            for line in list(ax.lines):
+                line.remove()
+            leg = ax.get_legend()
+            if leg is not None:
+                leg.remove()
+
+            info_text.set_visible(False)
+            info_text.set_text("")
+
+            ax.set_facecolor("#0c89f7")
+            ax.grid(alpha=0.4, color="white")
+            ax.margins(x=0)
+
+            asset_ret = _daily_returns(self.prices)
+
+            ax.plot(asset_ret.index, asset_ret.values, color="blue", label=f"{self.ticker} Daily Returns")
+            ax.axhline(0, color="white", alpha=0.35, linewidth=1)
+
+            show_stats = False
+
+            if state["benchmark"] and benchmark_prices is not None:
+                bench_ret = _daily_returns(benchmark_prices)
+                common = asset_ret.index.intersection(bench_ret.index)
+                asset_ret_aligned = asset_ret.loc[common]
+                bench_ret_aligned = bench_ret.loc[common]
+                ax.plot(bench_ret_aligned.index, bench_ret_aligned.values, color="orange", label=f"{benchmark_ticker} Daily Returns")
+                show_stats = True
+            else:
+                asset_ret_aligned = asset_ret
+                bench_ret_aligned = None
+
+            if state["cumulative"]:
+                asset_cum = _cumulative_from_returns(asset_ret)
+                ax.plot(asset_cum.index, asset_cum.values, "--", color="blue", label=f"{self.ticker} Cumulative Return")
+
+                if state["benchmark"] and benchmark_prices is not None:
+                    bench_ret = _daily_returns(benchmark_prices)
+                    bench_cum = _cumulative_from_returns(bench_ret)
+                    ax.plot(bench_cum.index, bench_cum.values, "--", color="orange", label=f"{benchmark_ticker} Cumulative Return")
+
+            ax.set_title(f"{self.ticker} Daily Returns ({self.start_date} to {self.end_date})")
+            ax.set_xlabel("Date")
+            ax.set_ylabel("Daily Return (%)")
+            ax.legend()
+
+            if show_stats:
+                stats = self.alpha_beta(benchmark_ticker, self.start_date, self.end_date)
+                alpha_ann = stats["alpha_annual"]
+                beta = stats["beta"]
+                r2 = stats["r2"]
+
+                info_text.set_text(
+                    f"{self.ticker} vs {benchmark_ticker}\n"
+                    f"Alpha (ann): {alpha_ann:.2%}\n"
+                    f"Beta: {beta:.3f}\n"
+                    f"R²: {r2:.3f}"
+                )
+                info_text.set_visible(True)
+
+            ax.relim()
+            ax.autoscale_view()
+            fig.canvas.draw_idle()
+
+        def toggle(label):
+            if label == "Benchmark":
+                state["benchmark"] = not state["benchmark"]
+            elif label == "Cumulative":
+                state["cumulative"] = not state["cumulative"]
+            recompute_plot()
+
+        check.on_clicked(toggle)
+
+        recompute_plot()
+
+        fig.subplots_adjust(
+            left=0.08,
+            right=0.97,
+            top=0.92,
+            bottom=0.12
+        )
+        plt.show(block=True)
+        plt.close(fig)
 
     """
     Returns a string representation of the Stock object.
