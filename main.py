@@ -1,7 +1,7 @@
 import numpy as np
 from src.stock import Stock     
 from src.option import Option
-from src.portfolio import Portfolio
+from src.historical_portfolio import HistoricalPortfolio
 from src.monte_carlo import MonteCarloOption, MonteCarloStock
 from src.helper import price_paths_macros
 
@@ -10,16 +10,16 @@ if __name__ == "__main__":
 
     # Creating a Stock instance
     apple = Stock(ticker="AAPL", start_date="2022-01-01", end_date="2023-01-01")
-    mu, sigma = apple.yearly_mu_sigma()
-    print(mu, sigma)
-    prices = apple.prices.to_numpy()
-    overall_return = (prices[-1] - prices[0]) / prices[0]
-    print(overall_return)
-    # print(apple.get_price_on_date("2021-04-05"), apple.get_return_on_date("2021-04-05"))
-    apple.plot_prices(benchmark_ticker="SPY")
-    apple.plot_daily_returns(benchmark_ticker="SPY")
-    apple.plot_drawdown()
-    apple.plot_price_moving_averages()
+    # mu, sigma = apple.yearly_mu_sigma()
+    # print(mu, sigma)
+    # prices = apple.prices.to_numpy()
+    # overall_return = (prices[-1] - prices[0]) / prices[0]
+    # print(overall_return)
+    # # print(apple.get_price_on_date("2021-04-05"), apple.get_return_on_date("2021-04-05"))
+    # apple.plot_prices(benchmark_ticker="SPY")
+    # apple.plot_daily_returns(benchmark_ticker="SPY")
+    # apple.plot_drawdown()
+    # apple.plot_price_moving_averages()
     
     # # MC simulation of stock
     # # mc_sim = MonteCarloStock(stock=apple, mid_date="2021-12-29")
@@ -46,8 +46,13 @@ if __name__ == "__main__":
     # op_mc_sim.plot_option_payoff()
     # paths = op_mc_sim.simulate_price_paths()
     # op_mc_sim.plot_simulated_paths(paths=paths)
-    p = Portfolio(positions={apple: 1}, cash=100.0)
+    p = HistoricalPortfolio(positions={apple: 4}, cash=100.0)
     p.backtest(start="2022-01-01", end="2023-01-01")
+    # p.plot_portfolio_value()
+    # p.plot_performance()
+    # p.plot_portfolio_weights()
+    p.plot_portfolio_returns()
+
 
 
 
