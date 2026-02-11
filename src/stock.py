@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import yfinance as yf
-import matplotlib
+from .helper import alpha_beta
 import matplotlib.pyplot as plt
 from datetime import date, timedelta
 from matplotlib.widgets import CheckButtons
@@ -172,79 +172,40 @@ class Stock:
 
         return mu_annual, sigma_annual
 
+
     """
-    Computes alpha, beta, correlation, and R² versus a benchmark.
+    Computes moving averages for the stock price.
 
     Parameters:
-    benchmark_ticker (str) - Benchmark symbol
-    start_date (str | None) - Start date
-    end_date (str | None) - End date
-    trading_days (int) - Trading days per year
+    windows (list[int]) - Moving average window lengths in trading days
+    ma_type (str) - Moving average type ("sma" or "ema")
 
     Return:
-    dict - Performance statistics
+    pd.DataFrame - DataFrame containing moving averages for each window
     """
-    def alpha_beta(
+    def compute_price_moving_averages(
         self,
-        benchmark_ticker: str = "SPY",
-        start_date: str | None = None,
-        end_date: str | None = None,
-        trading_days: int = 252,
-    ) -> dict:
-        start = start_date or self.start_date
-        end = end_date or self.end_date
-        if start is None or end is None:
-            raise ValueError("start_date/end_date missing. Provide them or set them on the Stock object.")
+        windows=[5, 20, 50, 200],
+        ma_type="sma"
+    ) -> pd.DataFrame:
+        self._ensure_loaded()
 
-        start_dt = pd.to_datetime(start)
-        end_dt = pd.to_datetime(end)
-        if end_dt <= start_dt:
-            raise ValueError("end_date must be after start_date.")
+        if not windows:
+            raise ValueError("windows must not be empty.")
 
-        asset_prices = self.fetch_prices(self.ticker, str(start_dt.date()), str(end_dt.date()), self.price_field)
-        bench_prices = self.fetch_prices(benchmark_ticker, str(start_dt.date()), str(end_dt.date()), self.price_field)
+        def MA(series, w):
+            if ma_type == "ema":
+                return series.ewm(span=w, adjust=False).mean()
+            if ma_type == "sma":
+                return series.rolling(w).mean()
+            raise ValueError("ma_type must be 'sma' or 'ema'.")
 
-        if isinstance(asset_prices, pd.DataFrame):
-            asset_prices = asset_prices.iloc[:, 0]
-        if isinstance(bench_prices, pd.DataFrame):
-            bench_prices = bench_prices.iloc[:, 0]
+        ma_df = pd.DataFrame(index=self.prices.index)
 
-        asset_ret = asset_prices.pct_change()
-        bench_ret = bench_prices.pct_change()
+        for w in windows:
+            ma_df[f"{ma_type.upper()} {w}d"] = MA(self.prices, w)
 
-        df = pd.concat(
-            [asset_ret.rename("asset"), bench_ret.rename("bench")],
-            axis=1
-        ).replace([np.inf, -np.inf], np.nan).dropna()
-
-        if len(df) < 5:
-            raise ValueError(f"Not enough clean overlapping return data (n={len(df)}).")
-
-        x = df["bench"].to_numpy()
-        y = df["asset"].to_numpy()
-
-        var_x = float(np.var(x, ddof=1))
-        if np.isnan(var_x) or np.isclose(var_x, 0.0):
-            raise ValueError("Benchmark returns variance is ~0 or NaN; beta undefined for this window.")
-
-        beta, alpha_daily = np.polyfit(x, y, 1)
-        alpha_annual = float(alpha_daily * trading_days)
-
-        corr = float(np.corrcoef(y, x)[0, 1])
-        r2 = float(corr**2) if np.isfinite(corr) else np.nan
-
-        return {
-            "ticker": self.ticker,
-            "benchmark": benchmark_ticker,
-            "start_date": str(df.index[0].date()),
-            "end_date": str(df.index[-1].date()),
-            "alpha_daily": float(alpha_daily),
-            "alpha_annual": alpha_annual,
-            "beta": float(beta),
-            "correlation": corr,
-            "r2": r2,
-            "n_obs": int(len(df)),
-        }
+        return ma_df
 
     """
     Plots price data and optionally compares it to a benchmark.
@@ -339,7 +300,7 @@ class Stock:
             ax.legend()
 
             if show_stats:
-                stats = self.alpha_beta(benchmark_ticker, self.start_date, self.end_date)
+                stats = alpha_beta(self.ticker, benchmark_ticker=benchmark_ticker, ticker_price=self.prices, bench_price=benchmark_prices)
                 alpha_ann = stats["alpha_annual"]
                 beta = stats["beta"]
                 r2 = stats["r2"]
@@ -406,6 +367,7 @@ class Stock:
         plt.tight_layout()
         plt.show(block=True)
         plt.close(fig)
+
 
     """
     Plots the daily returns of the stock (also with a benchmark):
@@ -508,7 +470,7 @@ class Stock:
             ax.legend()
 
             if show_stats:
-                stats = self.alpha_beta(benchmark_ticker, self.start_date, self.end_date)
+                stats = alpha_beta(self.ticker, benchmark_ticker=benchmark_ticker, ticker_price=self.prices, bench_price=benchmark_prices)
                 alpha_ann = stats["alpha_annual"]
                 beta = stats["beta"]
                 r2 = stats["r2"]
@@ -544,6 +506,84 @@ class Stock:
         )
         plt.show(block=True)
         plt.close(fig)
+
+
+    """
+    Plots the stock price together with multiple moving averages and an optional benchmark.
+
+    Parameters:
+    windows (list[int]) - Moving average window lengths in trading days
+    ma_type (str) - Moving average type ("sma" or "ema")
+    benchmark_ticker (str | None) - Optional benchmark symbol
+
+    Return:
+    None
+    """        
+    def plot_price_moving_averages(
+        self,
+        windows=[5, 20, 50, 200],
+        ma_type="sma"
+    ):
+        self._ensure_loaded()
+
+        ma_df = self.compute_price_moving_averages(windows, ma_type)
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        fig.patch.set_facecolor("#8ebff3")
+        ax.set_facecolor("#0c89f7")
+        ax.grid(alpha=0.4, color="white")
+
+        state = {col: False for col in ma_df.columns}
+
+        price_line, = ax.plot(
+            self.prices,
+            linewidth=1.2,
+            alpha=0.7,
+            label=f"{self.ticker} Price",
+            color="blue"
+        )
+
+        def update_legend():
+            visible_lines = [price_line] + [l for l in lines.values() if l.get_visible()]
+            labels = [l.get_label() for l in visible_lines]
+            ax.legend(visible_lines, labels)
+
+        lines = {}
+
+        for col in ma_df.columns:
+            line, = ax.plot(
+                ma_df.index,
+                ma_df[col],
+                linewidth=2.5,
+                visible=False,
+                label=col
+            )
+            lines[col] = line
+
+        rax = ax.inset_axes([0.78, 0.03, 0.2, 0.25])
+        rax.set_facecolor("#a1d0f8")
+        labels = list(ma_df.columns)
+        check = CheckButtons(rax, labels, [False]*len(labels))
+
+        def toggle(label):
+            ax.margins(x=0)
+            state[label] = not state[label]
+            lines[label].set_visible(state[label])
+            update_legend()
+            fig.canvas.draw_idle()
+
+        check.on_clicked(toggle)
+
+        ax.set_title(f"{self.ticker} Moving Averages")
+        ax.set_ylabel("Price")
+        ax.margins(x=0)
+        update_legend()
+
+        plt.tight_layout()
+        plt.show(block=True)
+        plt.close(fig)
+
+
 
     """
     Returns a string representation of the Stock object.
