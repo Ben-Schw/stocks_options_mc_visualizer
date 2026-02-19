@@ -54,16 +54,18 @@ yf_df (fixture)
 Return:
 None
 """
-def test_yearly_mu_sigma(monkeypatch, yf_df):
+def test_mu_sigma_sharpe(monkeypatch, yf_df):
     import yfinance as yf
     monkeypatch.setattr(yf, "download", lambda *a, **k: yf_df.copy())
 
     st = Stock("TEST", "2020-01-01", "2020-03-01")
-    mu, sigma = st.yearly_mu_sigma()
+    tot_mu, ann_mu, ann_sigma, sharpe = st.mu_sigma_sharpe()
 
-    assert np.isfinite(mu)
-    assert np.isfinite(sigma)
-    assert sigma >= 0.0
+    assert np.isfinite(tot_mu)
+    assert np.isfinite(ann_mu)
+    assert np.isfinite(ann_sigma)
+    assert np.isfinite(sharpe)
+    assert ann_sigma >= 0.0
 
 
 """

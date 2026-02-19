@@ -19,10 +19,15 @@ class HistoricalPortfolio:
         self.positions = dict(positions) if positions else {}
         self.cash = float(cash)
         self.value = float(cash)
+        start = list(self.positions.keys())[0].start_date
+        end = list(self.positions.keys())[0].end_date
 
         if self.positions:
             for stock, quantity in self.positions.items():
                 self.value += float(stock.prices.iloc[0]) * float(quantity)
+            for stock in list(self.positions.keys())[1:]:
+                if start is not stock.start_date or end is not stock.end_date:
+                    raise ValueError("All stocks must be initalized over the same time frame.")
 
     """
     Updates the portfolio value at a given time index without changing positions.
@@ -33,7 +38,7 @@ class HistoricalPortfolio:
     Return:
     float - Updated portfolio value
     """
-    def update_hold(self, counter: int):
+    def _update_hold(self, counter: int):
         if not self.positions:
             self.value = float(self.cash)
             return self.value
@@ -47,6 +52,7 @@ class HistoricalPortfolio:
             self.value += float(stock.prices.iloc[counter]) * float(quantity)
 
         return self.value
+    
 
     """
     Buys positions using a total cash amount and allocation parts per stock.
@@ -59,10 +65,10 @@ class HistoricalPortfolio:
     Return:
     float - Updated portfolio value after the buy
     """
-    def update_buy(self, bought_positions: dict, price_buy: float, counter: int):
+    def _update_buy(self, bought_positions: dict, price_buy: float, counter: int):
         price_buy = float(price_buy)
         if price_buy > self.cash or (not self.positions and not bought_positions):
-            return self.update_hold(counter)
+            return self._update_hold(counter)
 
         if sum(bought_positions.values()) > 1:
             raise ArithmeticError("Relational positions")
@@ -77,7 +83,8 @@ class HistoricalPortfolio:
             self.positions[stock] = self.positions.get(stock, 0.0) + shares
 
         self.cash -= price_buy
-        return self.update_hold(counter)
+        return self._update_hold(counter)
+    
 
     """
     Sells positions for a total cash amount and allocation parts per stock.
@@ -90,10 +97,10 @@ class HistoricalPortfolio:
     Return:
     float - Updated portfolio value after the sell
     """
-    def update_sell(self, sold_positions: dict, price_sell: float, counter: int):
+    def _update_sell(self, sold_positions: dict, price_sell: float, counter: int):
         price_sell = float(price_sell)
         if price_sell > (self.value - self.cash) or not self.positions:
-            return self.update_hold(counter)
+            return self._update_hold(counter)
 
         if sum(sold_positions.values()) > 1:
             raise ArithmeticError("Relational positions")
@@ -115,25 +122,30 @@ class HistoricalPortfolio:
                 del self.positions[stock]
 
         self.cash += price_sell
-        return self.update_hold(counter)
+        return self._update_hold(counter)
+    
 
-    def backtest(self, start: str, end: str, cash: float = 100.0, trading_stocks: list[Stock] | None = None):
-        if trading_stocks is None:
-            trading_stocks = [Stock(ticker="SPY", start_date=start, end_date=end)]
+    """
+    Method to backtest the portfolio based on own rules. Should be run before portfolio can be properly analysed.
+
+    Parameters:
+    start (str) - start date of the backtest (should be the same date used for initialisation of stock)
+    end (str) - end date of the backtest (should be the same date used for initialisation of stock)
+    cash (float) - amount of cash used for backtest (It is possible to start with an empty portfolio)
+    trading_stocks (list) - lsit of stocks that will be traded
+
+    Return:
+    None 
+    """
+    def backtest(self, start: str | None = None, end: str | None = None, cash: float = 0.0, trading_stocks: list[Stock] | None = None):
         self.cash += cash
-        buy_pos = {}
-        for stock in trading_stocks:
-            buy_pos[stock] = 1 / len(trading_stocks)
-
-        self.update_buy(buy_pos, price_buy=0.8 * self.cash, counter=0)
-        print(self.cash)
-        print(self.positions)
-        print(self.update_hold(0))
+        # print(self.cash)
+        # print(self.positions)
+        # print(self._update_hold(0))
         all_stocks = list(self.positions.keys())
-        if not all_stocks:
-            raise ValueError("No stocks to backtest.")
-        pos_name = [stock.ticker for stock in list(self.positions.keys())]
-        print(pos_name)
+        for stock in list(self.positions.keys()):
+            if start is not stock.start_date or end is not stock.end_date:
+                raise ValueError("Backtest must run over the same time frame as stocks.")
 
         values = []
         cash_series = []
@@ -144,16 +156,7 @@ class HistoricalPortfolio:
         T = min(len(s.prices) for s in all_stocks)
 
         for t in range(T):
-            if t % 10 == 0:
-                sell_dict = {all_stocks[0]: 1.0}
-                invested = max(self.value - self.cash, 0.0)
-                self.update_sell(sell_dict, price_sell=0.1 * invested, counter=t)
-
-            if t % 5 == 0:
-                buy_dict = {all_stocks[0]: 1.0}
-                self.update_buy(buy_dict, price_buy=0.05 * self.cash, counter=t)
-
-            values.append(self.update_hold(t))
+            values.append(self._update_hold(t))
             cash_series.append(self.cash)
             counters.append(ref_stock.prices.index[t])
 
@@ -193,8 +196,8 @@ class HistoricalPortfolio:
         self._bt_asset_values = asset_values_df
         self._bt_prices = prices_df
 
-        print("Final cash:", self._bt_cash)
-        print("Final value:", self._bt_port_value)
-        print("Positions:")
-        for stock, qty in self.positions.items():
-            print(stock.ticker, qty)
+        # print("Final cash:", self._bt_cash)
+        # print("Final value:", self._bt_port_value)
+        # print("Positions:")
+        # for stock, qty in self.positions.items():
+        #     print(stock.ticker, qty)

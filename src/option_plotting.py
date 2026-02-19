@@ -46,6 +46,7 @@ class OptionPlotMixin:
         fig.subplots_adjust(left=0.08, right=0.97, top=0.92, bottom=0.12)
         plt.show(block=True)
         plt.close(fig)
+        
 
     """
     Plots option price versus underlying price for fixed parameters.
@@ -84,6 +85,7 @@ class OptionPlotMixin:
         fig.subplots_adjust(left=0.08, right=0.97, top=0.92, bottom=0.12)
         plt.show(block=True)
         plt.close(fig)
+
 
     """
     Plots a heatmap of option prices over strike and time-to-expiry grids with sliders for S, r, q and sigma (if present).

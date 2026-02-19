@@ -36,3 +36,9 @@ from .historical_portfolio_plotting import HistoricalPortfolioPlotMixin
 
 class HistPortfolio(HistoricalPortfolio, HistoricalPortfolioPlotMixin):
     pass
+
+from .portfolio_analysis import PortfolioAnalyzerRaw
+from .portfolio_analysis_plotting import PortfolioAnalyzerPlotMixin
+
+class PortfolioAnalyzer(PortfolioAnalyzerRaw, PortfolioAnalyzerPlotMixin):
+    pass

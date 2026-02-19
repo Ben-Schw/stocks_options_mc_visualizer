@@ -160,15 +160,20 @@ class StockCore:
     Return:
     tuple[float, float] - (Annual return, annual volatility)
     """
-    def yearly_mu_sigma(self) -> tuple[float, float]:
+    def mu_sigma_sharpe(self) -> tuple[float, float]:
         self._ensure_loaded()
-        mu_daily = float(self.returns.mean())
         sigma_daily = float(self.returns.std())
 
-        mu_annual = mu_daily * 252
-        sigma_annual = sigma_daily * np.sqrt(252)
+        total_return = self.values.iloc[-1] / self.values.iloc[0] - 1
 
-        return mu_annual, sigma_annual
+        n_days = len(self.returns)
+        n_years = n_days / 252
+
+        annual_return = (1 + total_return) ** (1 / n_years) - 1
+        annual_vol = sigma_daily * np.sqrt(252)
+        sharpe = annual_return / annual_vol
+
+        return [total_return, annual_return, annual_vol, sharpe]
 
     """
     Computes moving averages for the stock price.
