@@ -65,6 +65,7 @@ class PortfolioAnalyzerPlotMixin:
         ax.tick_params()
         ax.grid(alpha=0.4, color="white")
         ax.axhline(0, color="white", linestyle="--", alpha=0.8)
+        ax.tick_params(axis="x", labelrotation=45)
 
         legend = ax.legend()
         legend.get_frame().set_facecolor("#8ebff3")

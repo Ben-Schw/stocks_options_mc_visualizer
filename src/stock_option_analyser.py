@@ -42,3 +42,6 @@ from .portfolio_analysis_plotting import PortfolioAnalyzerPlotMixin
 
 class PortfolioAnalyzer(PortfolioAnalyzerRaw, PortfolioAnalyzerPlotMixin):
     pass
+
+from .bonds import Bond
+from .helper import TimeSeriesAsset

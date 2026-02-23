@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime, timezone
 
 
 class StockCore:
@@ -164,16 +164,139 @@ class StockCore:
         self._ensure_loaded()
         sigma_daily = float(self.returns.std())
 
-        total_return = self.values.iloc[-1] / self.values.iloc[0] - 1
+        total_return = self.prices.iloc[-1] / self.prices.iloc[0] - 1
 
         n_days = len(self.returns)
         n_years = n_days / 252
 
         annual_return = (1 + total_return) ** (1 / n_years) - 1
         annual_vol = sigma_daily * np.sqrt(252)
-        sharpe = annual_return / annual_vol
+        sharpe = annual_return / annual_vol if annual_vol != 0 else 0
 
         return [total_return, annual_return, annual_vol, sharpe]
+    
+    """
+    Fetches fundamental metrics from yfinance and uses the latest available price in self.prices
+    (based on the object's configured date range) to compute valuation ratios such as KGV and KBV.
+
+    The method stores results on the instance and can optionally reuse them for a given TTL to avoid
+    repeated requests to yfinance.
+
+    Parameters:
+    cache_ttl_minutes (int) - Time-to-live for cached fundamentals in minutes.
+
+    Return:
+    dict - Fundamental metrics and derived valuation ratios.
+    """
+    def fetch_fundamentals_from_prices(self, cache_ttl_minutes: int = 60) -> dict:
+        self._ensure_loaded()
+
+        if not hasattr(self, "_fundamentals"):
+            self._fundamentals = {}
+        if not hasattr(self, "_fundamentals_fetched_at"):
+            self._fundamentals_fetched_at = None
+
+        now = datetime.now(timezone.utc)
+        if self._fundamentals_fetched_at is not None and self._fundamentals:
+            age_minutes = (now - self._fundamentals_fetched_at).total_seconds() / 60.0
+            if age_minutes < cache_ttl_minutes:
+                return self._fundamentals
+
+        price = float(self.prices.iloc[-1]) if self.prices is not None and not self.prices.empty else None
+
+        tk = yf.Ticker(self.ticker)
+        try:
+            info = tk.info or {}
+        except Exception:
+            info = {}
+
+        trailing_eps = info.get("trailingEps")
+        forward_eps = info.get("forwardEps")
+        book_value = info.get("bookValue")
+
+        pe_ttm = None
+        if price is not None and trailing_eps not in (None, 0):
+            pe_ttm = price / trailing_eps
+
+        pe_fwd = None
+        if price is not None and forward_eps not in (None, 0):
+            pe_fwd = price / forward_eps
+
+        pb = None
+        if price is not None and book_value not in (None, 0):
+            pb = price / book_value
+
+        ev = info.get("enterpriseValue")
+        ebitda = info.get("ebitda")
+        ev_ebitda = info.get("enterpriseToEbitda")
+        if ev_ebitda is None and ev not in (None, 0) and ebitda not in (None, 0):
+            ev_ebitda = ev / ebitda
+
+        self._fundamentals = {
+            "ticker": self.ticker,
+            "name": info.get("shortName"),
+            "currency": info.get("currency"),
+            "price_used": price,
+            "price_used_date": self.prices.index[-1].date().isoformat() if self.prices is not None and not self.prices.empty else None,
+
+            "market_cap": info.get("marketCap"),
+
+            "eps_ttm": trailing_eps,
+            "kgv_ttm": pe_ttm,
+            "eps_fwd": forward_eps,
+            "kgv_fwd": pe_fwd,
+
+            "book_value": book_value,
+            "kbv": pb,
+
+            "dividend_yield": info.get("dividendYield"),
+            "payout_ratio": info.get("payoutRatio"),
+            "beta": info.get("beta"),
+            "peg": info.get("pegRatio"),
+
+            "profit_margin": info.get("profitMargins"),
+            "operating_margin": info.get("operatingMargins"),
+            "revenue_growth": info.get("revenueGrowth"),
+            "earnings_growth": info.get("earningsGrowth"),
+
+            "enterprise_value": ev,
+            "ebitda": ebitda,
+            "ev_ebitda": ev_ebitda,
+        }
+
+        self._fundamentals_fetched_at = now
+        return self._fundamentals
+
+    """
+    Returns the price-to-earnings ratio (KGV) computed using the latest price in self.prices.
+
+    Parameters:
+    kind (str) - "ttm" for trailing or "forward" for forward KGV.
+    cache_ttl_minutes (int) - Cache duration in minutes.
+
+    Return:
+    float | None - KGV value.
+    """
+    def get_kgv_from_prices(self, kind: str = "ttm", cache_ttl_minutes: int = 60) -> float | None:
+        f = self.fetch_fundamentals_from_prices(cache_ttl_minutes=cache_ttl_minutes)
+        kind = kind.lower().strip()
+        if kind in ("ttm", "trailing"):
+            return f.get("kgv_ttm")
+        if kind in ("forward", "fwd"):
+            return f.get("kgv_fwd")
+        raise ValueError("kind must be 'ttm' or 'forward'.")
+
+    """
+    Returns the price-to-book ratio (KBV) computed using the latest price in self.prices.
+
+    Parameters:
+    cache_ttl_minutes (int) - Cache duration in minutes.
+
+    Return:
+    float | None - KBV value.
+    """
+    def get_kbv_from_prices(self, cache_ttl_minutes: int = 60) -> float | None:
+        return self.fetch_fundamentals_from_prices(cache_ttl_minutes=cache_ttl_minutes).get("kbv")
 
     """
     Computes moving averages for the stock price.

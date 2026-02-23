@@ -91,3 +91,52 @@ def alpha_beta(
         "r2": r2,
         "n_obs": int(len(df)),
     }
+
+class TimeSeriesAsset:
+    """
+    Wraps any asset into aligned time series for value and cashflows.
+
+    Parameters:
+    name (str) - Identifier used for columns.
+    value (pd.Series) - Time series of mark-to-market values.
+    cashflow (pd.Series) - Time series of cashflows paid on dates (0 otherwise).
+    """
+    def __init__(self, name: str, value: pd.Series, cashflow: pd.Series | None = None):
+        self.ticker = str(name)
+        v = value.copy()
+        v.index = pd.to_datetime(v.index)
+        self.value = v.sort_index().astype(float)
+
+        if cashflow is None:
+            cf = pd.Series(0.0, index=self.value.index)
+        else:
+            cf = cashflow.copy()
+            cf.index = pd.to_datetime(cf.index)
+            cf = cf.sort_index().astype(float)
+
+        self.cashflow = cf.reindex(self.value.index).fillna(0.0)
+
+    """
+    Returns the asset value series aligned to a given index.
+
+    Parameters:
+    idx (pd.DatetimeIndex) - Target index.
+
+    Return:
+    pd.Series - Aligned value series.
+    """
+    def value_on_index(self, idx: pd.DatetimeIndex) -> pd.Series:
+        s = self.value.reindex(idx)
+        return s.ffill()
+
+    """
+    Returns the asset cashflow series aligned to a given index.
+
+    Parameters:
+    idx (pd.DatetimeIndex) - Target index.
+
+    Return:
+    pd.Series - Aligned cashflow series.
+    """
+    def cashflow_on_index(self, idx: pd.DatetimeIndex) -> pd.Series:
+        return self.cashflow.reindex(idx).fillna(0.0)

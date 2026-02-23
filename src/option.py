@@ -1,5 +1,7 @@
 import numpy as np
+import pandas as pd
 import scipy.stats
+import warnings
 
 
 class Option:
@@ -110,6 +112,143 @@ class Option:
     """
     def implied_vol(self, market_price: float, *args, **kwargs) -> float:
         raise NotImplementedError("implied_vol() is model-dependent and must be implemented where applicable.")
+    
+    """
+    Simulates repricing over a date range using an underlying price series and the option's own T.
+
+    Assumptions:
+    - start_date is the option's issuance date (t=0).
+    - The option expires when the remaining time-to-maturity reaches 0, i.e. after T years.
+    - No separate maturity_date is required.
+
+    Parameters:
+    start_date (str) - Simulation start date in "YYYY-MM-DD" (issuance date).
+    end_date (str) - Simulation end date in "YYYY-MM-DD".
+    underlying (pd.Series) - Underlying price series indexed by date.
+    calendar (str) - "B" for business days or "D" for daily.
+    position (str) - "long" or "short".
+    allow_early_exercise (bool) - If True and AmericanOption, early exercise is applied.
+    exercise_rule (str) - "optimal" or "intrinsic_positive".
+
+    Return:
+    pd.DataFrame - Columns: T, price, position_value, cashflow, exercised, pnl_unrealized, pnl_realized, pnl_total
+    """
+    def simulate(
+        self,
+        start_date: str,
+        end_date: str,
+        underlying: pd.Series,
+        calendar: str = "B",
+        position: str = "long",
+        allow_early_exercise: bool = True,
+        exercise_rule: str = "optimal",
+    ):
+        s0 = pd.Timestamp(start_date).normalize()
+        e0 = pd.Timestamp(end_date).normalize()
+
+        if e0 < s0:
+            raise ValueError("end_date must be on/after start_date.")
+
+        position = position.lower().strip()
+        if position not in ("long", "short"):
+            raise ValueError("position must be 'long' or 'short'.")
+        sign = 1.0 if position == "long" else -1.0
+
+        exercise_rule = exercise_rule.lower().strip()
+        if exercise_rule not in ("optimal", "intrinsic_positive"):
+            raise ValueError("exercise_rule must be 'optimal' or 'intrinsic_positive'.")
+
+        is_american = self.__class__.__name__ == "AmericanOption"
+        early = bool(allow_early_exercise and is_american)
+
+        idx = pd.date_range(s0, e0, freq=calendar)
+
+        u = underlying.copy()
+        u.index = pd.to_datetime(u.index).normalize()
+        u = u.sort_index().reindex(idx).ffill()
+
+        if pd.isna(u.iloc[0]):
+            warnings.warn("Underlying price at start_date is NaN. To avoid issuesthe underlying series should be forward-filled to the start_date. Affected Nans will be filled with 0.0 for simulation.")
+        
+        out = pd.DataFrame(index=idx)
+
+        T0 = float(self.T)
+        elapsed = (out.index - s0).days / 365.0
+        out["T"] = np.maximum(T0 - elapsed, 0.0).astype(float)
+
+        out["price"] = 0.0
+        out["position_value"] = 0.0
+        out["cashflow"] = 0.0
+        out["exercised"] = False
+
+        premium = self.premium
+        if premium is None:
+            kwargs0 = {}
+            if hasattr(self, "sigma"):
+                kwargs0["sigma"] = float(getattr(self, "sigma"))
+            try:
+                premium = float(self.price(S=float(u.iloc[0]), T=float(out["T"].iloc[0]), **kwargs0))
+            except TypeError:
+                premium = float(self.price(S=float(u.iloc[0]), T=float(out["T"].iloc[0])))
+
+        premium = float(premium)
+        out.iloc[0, out.columns.get_loc("cashflow")] = -sign * premium
+
+        exercised = False
+        ex_date = None
+
+        for d in idx:
+            if exercised:
+                continue
+
+            t = float(out.loc[d, "T"])
+            S = float(u.loc[d])
+
+            if t <= 0.0:
+                payoff = float(self.payoff(S))
+                out.loc[d, "cashflow"] += sign * payoff
+                out.loc[d, "exercised"] = True
+                exercised = True
+                ex_date = d
+                continue
+
+            kwargs = {}
+            if hasattr(self, "sigma"):
+                kwargs["sigma"] = float(getattr(self, "sigma"))
+
+            try:
+                model_price = float(self.price(S=S, T=t, **kwargs))
+            except TypeError:
+                model_price = float(self.price(S=S, T=t))
+
+            out.loc[d, "price"] = model_price
+            out.loc[d, "position_value"] = sign * model_price
+
+            if early:
+                intrinsic = float(self.payoff(S))
+                if exercise_rule == "intrinsic_positive":
+                    do_ex = intrinsic > 0.0
+                else:
+                    do_ex = intrinsic >= model_price
+
+                if do_ex:
+                    out.loc[d, "cashflow"] += sign * intrinsic
+                    out.loc[d, "exercised"] = True
+                    exercised = True
+                    ex_date = d
+
+        if ex_date is not None:
+            mask_after = out.index > ex_date
+            out.loc[mask_after, ["price", "position_value"]] = 0.0
+            out.loc[mask_after, "cashflow"] = 0.0
+            out.loc[mask_after, "exercised"] = False
+
+        out["pnl_realized"] = out["cashflow"].cumsum()
+        out["pnl_unrealized"] = out["position_value"]
+        out["pnl_total"] = out["pnl_realized"] + out["pnl_unrealized"]
+        out.fillna(0.0, inplace=True)
+
+        return out
 
     """
     Returns a string representation of the Option object.
@@ -504,3 +643,4 @@ class AmericanOption(Option):
             f"AmericanOption(option_type={self.option_type}, S={self.S}, K={self.K}, T={self.T}, "
             f"r={self.r}, q={self.q}, sigma={self.sigma}, steps={self.steps}, premium={self.premium})"
         )
+    

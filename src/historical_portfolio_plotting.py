@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import RadioButtons, CheckButtons
 
 from .helper import alpha_beta
+from .stock import Stock
 
 
 class HistoricalPortfolioPlotMixin:
@@ -41,6 +42,59 @@ class HistoricalPortfolioPlotMixin:
         plt.tight_layout()
         plt.show(block=True)
         plt.close(fig)
+
+
+    """
+    Plots portfolio returns over time against a benchmark.
+
+    Parameters:
+    bench (Stock) - Benchmark stock for performance comparison
+
+    Return:
+    None
+    """
+    def plot_performance_vs_bench(self, bench: Stock):
+        if not hasattr(self, "_bt_index") or not hasattr(self, "_bt_prices"):
+            raise ValueError("Run backtest() first so the backtest series are available.")
+
+        idx = self._bt_index
+
+        def normalize(series: pd.Series) -> pd.Series:
+            s = series.astype(float).copy()
+            s = s.replace([np.inf, -np.inf], np.nan)
+            s = s.reindex(idx)
+            s = s.dropna()
+            if s.empty:
+                return pd.Series(index=idx, dtype=float)
+            base = float(s.iloc[0])
+            if not np.isfinite(base) or np.isclose(base, 0.0):
+                return pd.Series(index=idx, dtype=float)
+            out = (s / base - 1) * 100
+            return out.reindex(idx)
+        
+
+        portfolio_perf = normalize(self._bt_port_value)
+        bench_perf = normalize(bench.prices)
+
+        fig, ax = plt.subplots(figsize=(11, 6))
+        fig.patch.set_facecolor("#8ebff3")
+        ax.set_facecolor("#0c89f7")
+        ax.grid(alpha=0.4, color="white")
+        ax.margins(x=0)
+
+        ax.plot(idx, portfolio_perf.values, linewidth=3, label="Portfolio", color="green")
+        ax.plot(idx, bench_perf.values, linewidth=2, linestyle="--", label=f"{bench.ticker} Benchmark", color="orange")
+
+        ax.set_title("Portfolio Performance vs Benchmark")
+        ax.set_ylabel("Performance (%)")
+        ax.set_xlabel("Date")
+        ax.legend(loc="upper left")
+
+        plt.tight_layout()
+        plt.show(block=True)
+        plt.close(fig)
+
+
 
     """
     Plots portfolio performance (always visible) and allows selecting up to
