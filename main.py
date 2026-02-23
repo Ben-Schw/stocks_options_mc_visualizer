@@ -94,7 +94,7 @@ if __name__ == "__main__":
     pf.plot_portfolio_value()
     pf.plot_performance()
     pf.plot_portfolio_weights()
-    print(analyzer_pf.alpha_beta_portfolio(bench=apple))
+    print(analyzer_pf.alpha_beta_portfolio(bench=spy))
     analyzer_pf.plot_pca_variance(n_components=2)
     analyzer_pf.plot_pca_loadings(n_components=2)
 
@@ -106,8 +106,7 @@ if __name__ == "__main__":
     p.plot_portfolio_weights()
     # p.plot_portfolio_returns()
     analyzer = PortfolioAnalyzer(p)
-    print(apple.prices)
-    print(analyzer.alpha_beta_portfolio(bench=apple))
+    print(analyzer.alpha_beta_portfolio(bench=spy))
     print(analyzer.return_sigma_sharpe())
     analyzer.plot_pca_variance(n_components=4)
     analyzer.plot_pca_loadings(n_components=4)

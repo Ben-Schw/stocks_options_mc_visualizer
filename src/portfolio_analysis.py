@@ -47,7 +47,7 @@ class PortfolioAnalyzerRaw:
             ticker="Portfolio",
             benchmark_ticker=bench.ticker,
             ticker_price=self.values,
-            bench_price=self.assets[bench.ticker]
+            bench_price=bench.prices
         )
     
     

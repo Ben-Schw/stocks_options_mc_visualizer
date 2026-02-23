@@ -55,13 +55,30 @@ def alpha_beta(
     if isinstance(bench_prices, pd.DataFrame):
         bench_prices = bench_prices.iloc[:, 0]
 
-    asset_ret = asset_prices.pct_change()
-    bench_ret = bench_prices.pct_change()
+    asset_prices = asset_prices.copy()
+    bench_prices = bench_prices.copy()
 
-    df = pd.concat(
-        [asset_ret.rename("asset"), bench_ret.rename("bench")],
-        axis=1
+    asset_prices.index = pd.to_datetime(asset_prices.index)
+    bench_prices.index = pd.to_datetime(bench_prices.index)
+
+    if getattr(asset_prices.index, "tz", None) is not None:
+        asset_prices.index = asset_prices.index.tz_localize(None)
+    if getattr(bench_prices.index, "tz", None) is not None:
+        bench_prices.index = bench_prices.index.tz_localize(None)
+
+    asset_prices = asset_prices.sort_index()
+    bench_prices = bench_prices.sort_index()
+
+    asset_prices = asset_prices[~asset_prices.index.duplicated(keep="last")]
+    bench_prices = bench_prices[~bench_prices.index.duplicated(keep="last")]
+
+    prices = pd.concat(
+        [asset_prices.rename("asset"), bench_prices.rename("bench")],
+        axis=1,
+        join="inner"
     ).replace([np.inf, -np.inf], np.nan).dropna()
+
+    df = prices.pct_change().replace([np.inf, -np.inf], np.nan).dropna()
 
     if len(df) < 5:
         raise ValueError(f"Not enough clean overlapping return data (n={len(df)}).")
